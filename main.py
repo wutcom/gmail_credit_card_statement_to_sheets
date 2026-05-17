@@ -21,7 +21,7 @@ from sheets_service import append_row_with_retry
 
 GMAIL_SEARCH_QUERY = (
     'has:attachment filename:pdf '
-    '(from:(kbank.com OR scb.co.th OR krungsriautodocument@app.krungsriauto.com)) '
+    '(from:(kbank.com OR krungsriautodocument@app.krungsriauto.com)) '
     '-label:processed'
 )
 
