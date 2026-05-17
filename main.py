@@ -18,13 +18,11 @@ from gmail_service import (
 from pdf_parser import parse_statement, save_raw_text
 from sheets_service import append_row_with_retry
 
-
 GMAIL_SEARCH_QUERY = (
     'has:attachment filename:pdf '
-    '(from:(kbank.com OR krungsriautodocument@app.krungsriauto.com)) '
+    '(from:(kbank.com OR  krungsriautodocument@app.krungsriauto.com OR digital-lending@ascendcorp.com)) '
     '-label:processed'
 )
-
 
 def detect_bank(sender: str):
     sender_lower = sender.lower()
@@ -53,6 +51,15 @@ def detect_bank(sender: str):
             "password_env": "PDF_PASSWORD_KRUNGSI",
         }
 
+    if (
+    "ascendcorp.com" in sender_lower
+    or "digital-lending@ascendcorp.com" in sender_lower
+):
+    return {
+        "bank_name": "Ascend Nano",
+        "card_name": "Pay Next Extra",
+        "password_env": "PDF_PASSWORD_ASCEND",
+    }
     return None
 
 
