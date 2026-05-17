@@ -24,6 +24,7 @@ GMAIL_SEARCH_QUERY = (
     '-label:processed'
 )
 
+
 def detect_bank(sender: str):
     sender_lower = sender.lower()
 
@@ -52,16 +53,16 @@ def detect_bank(sender: str):
         }
 
     if (
-    "ascendcorp.com" in sender_lower
-    or "digital-lending@ascendcorp.com" in sender_lower
-):
-    return {
-        "bank_name": "Ascend Nano",
-        "card_name": "Pay Next Extra",
-        "password_env": "PDF_PASSWORD_ASCEND",
-    }
-    return None
+        "ascendcorp.com" in sender_lower
+        or "digital-lending@ascendcorp.com" in sender_lower
+    ):
+        return {
+            "bank_name": "Ascend Nano",
+            "card_name": "Pay Next Extra",
+            "password_env": "PDF_PASSWORD_ASCEND",
+        }
 
+    return None
 
 def parse_email_date(date_header: str) -> str:
     if not date_header:
