@@ -139,10 +139,6 @@ def process_message(service, message_id: str, processed_label_id: str):
 
                 result = parse_statement_with_passwords(pdf_path, passwords)
 
-                print("----- PDF TEXT SAMPLE -----")
-                print(result.get("text", "")[:2000])
-                print("---------------------------")
-
                 if not result["success"]:
                     all_success = False
                     print(f"PARSE FAILED: {filename} - {result['error']}")
