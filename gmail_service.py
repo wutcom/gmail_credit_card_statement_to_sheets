@@ -13,8 +13,19 @@ SCOPES = ["https://www.googleapis.com/auth/gmail.modify"]
 
 
 def get_gmail_service():
+    import shutil
+    import tempfile
+
     credentials_path = os.getenv("GMAIL_CREDENTIALS_JSON", "credentials.json")
     token_path = os.getenv("GMAIL_TOKEN_JSON", "token.json")
+
+    # Render /etc/secrets is read-only.
+    # Copy token.json to /tmp before using it.
+    if token_path.startswith("/etc/secrets/"):
+        temp_token_path = os.path.join(tempfile.gettempdir(), "token.json")
+        if not os.path.exists(temp_token_path):
+            shutil.copyfile(token_path, temp_token_path)
+        token_path = temp_token_path
 
     creds = None
 
@@ -25,8 +36,6 @@ def get_gmail_service():
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
         else:
-            # Run this locally once to generate token.json.
-            # On Render, upload/use the generated token.json securely.
             flow = InstalledAppFlow.from_client_secrets_file(credentials_path, SCOPES)
             creds = flow.run_local_server(port=0)
 
@@ -34,7 +43,6 @@ def get_gmail_service():
             token_file.write(creds.to_json())
 
     return build("gmail", "v1", credentials=creds)
-
 
 def ensure_label(service, label_name: str) -> str:
     labels = service.users().labels().list(userId="me").execute().get("labels", [])
