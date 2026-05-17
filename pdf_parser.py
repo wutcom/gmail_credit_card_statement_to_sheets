@@ -1,22 +1,20 @@
 import re
-from datetime import datetime
-from pathlib import Path
-from typing import Dict, Optional
-
 from pypdf import PdfReader
 
 
 AMOUNT_PATTERNS = [
-    r"ยอดที่ต้องชำระ\s*([\d,]+\.\d{2})",
-    r"Amount Due\s*([\d,]+\.\d{2})",
-    r"Total Amount Due\s*([\d,]+\.\d{2})",
-    r"Payment Amount\s*([\d,]+\.\d{2})",
+    r"ยอดเงินที่ต้องชำระทั้งสิ้น.*?([\d,]+\.\d{2})",
+    r"Total Amount Due.*?([\d,]+\.\d{2})",
+    r"ยอดคงเหลือ.*?([\d,]+\.\d{2})",
+    r"ยอดผ่อนชำระรายเดือน.*?([\d,]+\.\d{2})",
+    r"Installment.*?([\d,]+\.\d{2})",
+    r"Amount Due.*?([\d,]+\.\d{2})",
 ]
 
 DUE_DATE_PATTERNS = [
-    r"วันครบกำหนดชำระ\s*(\d{2}/\d{2}/\d{4})",
-    r"Payment Due Date\s*(\d{2}/\d{2}/\d{4})",
-    r"Due Date\s*(\d{2}/\d{2}/\d{4})",
+    r"วันที่ครบกำหนดชำระ.*?(\d{2}/\d{2}/\d{2,4})",
+    r"Due Date.*?(\d{2}/\d{2}/\d{2,4})",
+    r"กำหนดชำระ.*?(\d{2}/\d{2}/\d{2,4})",
 ]
 
 
@@ -35,35 +33,51 @@ def extract_pdf_text(pdf_path: str, password: str) -> str:
     return "\n".join(text_parts)
 
 
-def parse_amount(text: str) -> Optional[float]:
+def normalize_text(text: str) -> str:
+    text = text.replace("\n", " ")
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def parse_amount(text: str):
+    text = normalize_text(text)
+
     for pattern in AMOUNT_PATTERNS:
         match = re.search(pattern, text, flags=re.IGNORECASE)
         if match:
-            value = match.group(1).replace(",", "")
-            return float(value)
+            return float(match.group(1).replace(",", ""))
+
     return None
 
 
 def normalize_date(date_text: str) -> str:
-    # Supports DD/MM/YYYY.
-    # If the year is Buddhist Era, convert to Christian Era.
-    date_value = datetime.strptime(date_text, "%d/%m/%Y")
+    day, month, year = date_text.split("/")
 
-    if date_value.year > 2400:
-        date_value = date_value.replace(year=date_value.year - 543)
+    day = int(day)
+    month = int(month)
+    year = int(year)
 
-    return date_value.strftime("%Y-%m-%d")
+    if year < 100:
+        year += 2500
+
+    if year > 2400:
+        year -= 543
+
+    return f"{year:04d}-{month:02d}-{day:02d}"
 
 
-def parse_due_date(text: str) -> Optional[str]:
+def parse_due_date(text: str):
+    text = normalize_text(text)
+
     for pattern in DUE_DATE_PATTERNS:
         match = re.search(pattern, text, flags=re.IGNORECASE)
         if match:
             return normalize_date(match.group(1))
+
     return None
 
 
-def parse_statement(pdf_path: str, password: str) -> Dict:
+def parse_statement(pdf_path: str, password: str):
     text = extract_pdf_text(pdf_path, password)
 
     amount_due = parse_amount(text)
@@ -88,8 +102,12 @@ def parse_statement(pdf_path: str, password: str) -> Dict:
 
 
 def save_raw_text(log_dir: str, filename: str, text: str):
-    Path(log_dir).mkdir(parents=True, exist_ok=True)
-    safe_name = re.sub(r"[^a-zA-Z0-9_.-]", "_", filename)
-    output_path = Path(log_dir) / f"{safe_name}.txt"
-    output_path.write_text(text, encoding="utf-8")
-    return str(output_path)
+    import os
+
+    os.makedirs(log_dir, exist_ok=True)
+    path = os.path.join(log_dir, f"{filename}.txt")
+
+    with open(path, "w", encoding="utf-8") as file:
+        file.write(text)
+
+    return path
