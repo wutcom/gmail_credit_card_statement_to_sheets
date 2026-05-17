@@ -21,7 +21,7 @@ from sheets_service import append_row_with_retry
 
 GMAIL_SEARCH_QUERY = (
     'has:attachment filename:pdf '
-    '(from:(kbank.com OR scb.co.th OR krungsri.com)) '
+    '(from:(kbank.com OR scb.co.th OR krungsriautodocument@app.krungsriauto.com)) '
     '-label:processed'
 )
 
@@ -43,10 +43,13 @@ def detect_bank(sender: str):
             "password_env": "PDF_PASSWORD_SCB",
         }
 
-    if "krungsri" in sender_lower:
+    if (
+        "krungsri" in sender_lower
+        or "krungsriautodocument@app.krungsriauto.com" in sender_lower
+    ):
         return {
             "bank_name": "Krungsri",
-            "card_name": "Krungsri Credit Card",
+            "card_name": "Krungsri Auto",
             "password_env": "PDF_PASSWORD_KRUNGSI",
         }
 
@@ -63,6 +66,31 @@ def parse_email_date(date_header: str) -> str:
         return date_header
 
 
+def get_passwords(password_env: str):
+    value = os.getenv(password_env, "")
+
+    return [
+        p.strip()
+        for p in value.split(",")
+        if p.strip()
+    ]
+
+
+def parse_statement_with_passwords(pdf_path: str, passwords: list):
+    last_error = None
+
+    for password in passwords:
+        try:
+            return parse_statement(pdf_path, password)
+        except Exception as ex:
+            last_error = ex
+
+    if last_error:
+        raise last_error
+
+    raise ValueError("No PDF password configured")
+
+
 def process_message(service, message_id: str, processed_label_id: str):
     message = get_message(service, message_id)
 
@@ -70,13 +98,20 @@ def process_message(service, message_id: str, processed_label_id: str):
     sender = get_header(message, "From")
     email_date = parse_email_date(get_header(message, "Date"))
 
+    print("======================================")
+    print(f"EMAIL ID   : {message_id}")
+    print(f"FROM       : {sender}")
+    print(f"SUBJECT    : {subject}")
+    print(f"EMAIL DATE : {email_date}")
+    print("======================================")
+
     bank = detect_bank(sender)
     if not bank:
         print(f"SKIP: cannot detect bank. sender={sender}")
         return
 
-    password = os.getenv(bank["password_env"])
-    if not password:
+    passwords = get_passwords(bank["password_env"])
+    if not passwords:
         print(f"SKIP: missing password env {bank['password_env']}")
         return
 
@@ -92,6 +127,8 @@ def process_message(service, message_id: str, processed_label_id: str):
             filename = attachment["filename"]
             pdf_path = os.path.join(temp_dir, filename)
 
+            print(f"PDF FILE   : {filename}")
+
             try:
                 download_attachment(
                     service=service,
@@ -100,14 +137,22 @@ def process_message(service, message_id: str, processed_label_id: str):
                     output_path=pdf_path,
                 )
 
-                result = parse_statement(pdf_path, password)
+                result = parse_statement_with_passwords(pdf_path, passwords)
+
+                print("----- PDF TEXT SAMPLE -----")
+                print(result.get("text", "")[:2000])
+                print("---------------------------")
 
                 if not result["success"]:
                     all_success = False
                     print(f"PARSE FAILED: {filename} - {result['error']}")
 
                     if os.getenv("SAVE_RAW_TEXT_ON_ERROR", "true").lower() == "true":
-                        saved_path = save_raw_text("logs", filename, result.get("text", ""))
+                        saved_path = save_raw_text(
+                            "logs",
+                            filename,
+                            result.get("text", "")
+                        )
                         print(f"Raw text saved: {saved_path}")
 
                     continue
@@ -126,7 +171,12 @@ def process_message(service, message_id: str, processed_label_id: str):
                 ]
 
                 append_row_with_retry(row)
-                print(f"APPENDED: {bank['bank_name']} amount={result['amount_due']} due={result['due_date']}")
+
+                print(
+                    f"APPENDED: {bank['bank_name']} "
+                    f"amount={result['amount_due']} "
+                    f"due={result['due_date']}"
+                )
 
             except Exception as ex:
                 all_success = False
@@ -143,10 +193,15 @@ def main():
     load_dotenv()
 
     service = get_gmail_service()
+
     label_name = os.getenv("GMAIL_PROCESSED_LABEL", "processed")
     processed_label_id = ensure_label(service, label_name)
 
-    messages = search_messages(service, GMAIL_SEARCH_QUERY, max_results=20)
+    messages = search_messages(
+        service,
+        GMAIL_SEARCH_QUERY,
+        max_results=20
+    )
 
     if not messages:
         print("No new credit card statement emails found.")
